@@ -1,4 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
+
+// Captured before any test replaces global.fetch with a mock, so the HTTP
+// suite can make real network calls against the local server.
+const nativeFetch = globalThis.fetch.bind(globalThis);
 
 // Mock VRM client first before any imports
 const mockVRMClient = {
@@ -382,5 +386,86 @@ describe('MCP Server', () => {
         expect(error).toBeDefined();
       }
     });
+  });
+});
+
+describe('HTTP Transport', () => {
+  let httpServer: any;
+  let baseUrl: string;
+
+  beforeAll(async () => {
+    process.env.VRM_TOKEN = 'test-token';
+
+    mockVRMClient.getUserMe.mockResolvedValue({
+      ok: true,
+      source: 'vrm',
+      endpoint: '/users/me',
+      requestId: 'test-id',
+      fetchedAt: '2024-01-01T00:00:00Z',
+      data: { idUser: 12345, name: 'Test User' },
+      meta: { status: 200, durationMs: 100, rateLimited: false }
+    });
+
+    const { createHttpServer } = await import('./index.js');
+    httpServer = createHttpServer(mockVRMClient as any);
+    await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', () => resolve()));
+    baseUrl = `http://127.0.0.1:${httpServer.address().port}`;
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+  });
+
+  const postMcp = (body: unknown) =>
+    nativeFetch(`${baseUrl}/mcp`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        // Streamable HTTP requires the client to accept both content types.
+        'Accept': 'application/json, text/event-stream'
+      },
+      body: JSON.stringify(body)
+    });
+
+  it('lists all tools over HTTP', async () => {
+    const res = await postMcp({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} });
+    expect(res.status).toBe(200);
+
+    const json: any = await res.json();
+    const names = json.result.tools.map((t: any) => t.name);
+    expect(names).toContain('vrm_get_user_me');
+    expect(names).toContain('vrm_get_system_overview');
+    expect(json.result.tools.length).toBeGreaterThanOrEqual(40);
+  });
+
+  it('calls a tool over HTTP and returns VRM data', async () => {
+    const res = await postMcp({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: { name: 'vrm_get_user_me', arguments: {} }
+    });
+    expect(res.status).toBe(200);
+
+    const json: any = await res.json();
+    expect(json.result.content[0].text).toContain('Test User');
+    expect(mockVRMClient.getUserMe).toHaveBeenCalled();
+  });
+
+  it('rejects GET on the MCP endpoint (stateless is POST-only)', async () => {
+    const res = await nativeFetch(`${baseUrl}/mcp`, {
+      method: 'GET',
+      headers: { 'Accept': 'text/event-stream' }
+    });
+    expect(res.status).toBe(405);
+  });
+
+  it('returns 404 for unknown paths', async () => {
+    const res = await nativeFetch(`${baseUrl}/nope`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream' },
+      body: '{}'
+    });
+    expect(res.status).toBe(404);
   });
 });
