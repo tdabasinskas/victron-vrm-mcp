@@ -36,6 +36,12 @@ Set the following environment variables:
 - `VRM_BASE_URL` (optional): Default is `https://vrmapi.victronenergy.com/v2`
 - `VRM_TOKEN_KIND` (optional): Either `Token` (default) or `Bearer`
 
+Transport selection (optional):
+
+- `MCP_TRANSPORT` (optional): `stdio` (default) or `http`. You can also pass `--http` on the command line.
+- `MCP_HTTP_HOST` (optional): Host to bind in HTTP mode. Default is `127.0.0.1`.
+- `MCP_HTTP_PORT` (optional): Port to bind in HTTP mode. Default is `3000`.
+
 You can set these via shell env or a local `.env` file (auto‑loaded via `dotenv`). Example `.env`:
 
 ```
@@ -63,6 +69,27 @@ VRM_TOKEN=your-token-here npm start
 echo "VRM_TOKEN=your-token-here" > .env
 npm start
 ```
+
+### As MCP Server (HTTP)
+
+The server can also speak MCP over **Streamable HTTP** instead of stdio. It runs
+statelessly and exposes a single endpoint at `POST /mcp`.
+
+```bash
+# Bind to 127.0.0.1:3000 by default
+VRM_TOKEN=your-token-here MCP_TRANSPORT=http npm start
+
+# Or choose host/port
+VRM_TOKEN=your-token-here MCP_TRANSPORT=http MCP_HTTP_HOST=0.0.0.0 MCP_HTTP_PORT=8080 npm start
+```
+
+Clients should send requests to `http://<host>:<port>/mcp` with headers
+`Content-Type: application/json` and `Accept: application/json, text/event-stream`.
+
+> **Note:** The single VRM token is read from the environment and applies to every
+> request — the HTTP endpoint has no built-in authentication. Bind it to localhost
+> (the default) or place it behind your own reverse proxy / network controls before
+> exposing it beyond your machine.
 
 ### Claude Desktop Configuration
 

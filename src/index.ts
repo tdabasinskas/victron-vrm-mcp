@@ -27,22 +27,25 @@ if (!process.env.VRM_TOKEN) {
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { createServer as createHttpNodeServer, type Server as HttpServer } from "node:http";
 import { VRMClient } from "./vrm-client.js";
 
-const server = new Server(
-  {
-    name: "vrm-readonly",
-    version: "0.1.0"
-  },
-  {
-    capabilities: {
-      tools: {}
+// Builds a fully-configured MCP Server with all tool handlers wired up.
+// Shared by both the stdio and HTTP transports so tool behavior is identical.
+export function createServer(vrmClient: VRMClient): Server {
+  const server = new Server(
+    {
+      name: "vrm-readonly",
+      version: "0.1.0"
+    },
+    {
+      capabilities: {
+        tools: {}
+      }
     }
-  }
-);
-
-const vrmClient = new VRMClient();
+  );
 
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   const tools = [
@@ -890,35 +893,126 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
-async function main() {
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error("VRM MCP Server started");
-  
-  // Handle process termination gracefully
+  return server;
+}
+
+// Registers process-wide signal and error handlers. Shared by both transports.
+function setupProcessHandlers() {
   process.on('SIGTERM', () => {
     console.error('Received SIGTERM, shutting down gracefully');
     process.exit(0);
   });
-  
+
   process.on('SIGINT', () => {
     console.error('Received SIGINT, shutting down gracefully');
     process.exit(0);
   });
-  
-  // Handle unhandled errors
+
   process.on('uncaughtException', (error) => {
     console.error('Uncaught Exception:', error);
     process.exit(1);
   });
-  
+
   process.on('unhandledRejection', (reason, promise) => {
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
     process.exit(1);
   });
 }
 
-main().catch((error) => {
-  console.error('Failed to start VRM MCP Server:', error);
-  process.exit(1);
-});
+// Creates an HTTP server exposing the MCP endpoint at POST /mcp.
+// Stateless: a fresh Server + transport is created per request (so concurrent
+// requests can't collide on JSON-RPC ids), while the VRM client is shared.
+export function createHttpServer(vrmClient: VRMClient): HttpServer {
+  return createHttpNodeServer(async (req, res) => {
+    const url = new URL(req.url ?? '/', 'http://localhost');
+
+    if (url.pathname !== '/mcp') {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        jsonrpc: '2.0',
+        error: { code: -32601, message: 'Not found. MCP endpoint is at /mcp.' },
+        id: null
+      }));
+      return;
+    }
+
+    // Stateless mode has no sessions, so only POST is meaningful.
+    if (req.method !== 'POST') {
+      res.writeHead(405, { 'Content-Type': 'application/json', 'Allow': 'POST' });
+      res.end(JSON.stringify({
+        jsonrpc: '2.0',
+        error: { code: -32000, message: 'Method Not Allowed. This stateless server only accepts POST.' },
+        id: null
+      }));
+      return;
+    }
+
+    try {
+      const server = createServer(vrmClient);
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+        enableJsonResponse: true
+      });
+      res.on('close', () => {
+        transport.close();
+        server.close();
+      });
+      await server.connect(transport);
+      // Let the transport read and parse the request body (and handle bad JSON).
+      await transport.handleRequest(req, res);
+    } catch (error) {
+      console.error('Error handling MCP HTTP request:', error);
+      if (!res.headersSent) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          jsonrpc: '2.0',
+          error: { code: -32603, message: 'Internal server error' },
+          id: null
+        }));
+      }
+    }
+  });
+}
+
+async function runStdio() {
+  const vrmClient = new VRMClient();
+  const server = createServer(vrmClient);
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  console.error("VRM MCP Server started");
+  setupProcessHandlers();
+}
+
+async function runHttp() {
+  // Instantiated once up front so a missing VRM_TOKEN fails fast at startup,
+  // matching the stdio behavior. The same client is reused for every request.
+  const vrmClient = new VRMClient();
+  const host = process.env.MCP_HTTP_HOST || '127.0.0.1';
+  const port = parseInt(process.env.MCP_HTTP_PORT || '3000', 10);
+
+  const httpServer = createHttpServer(vrmClient);
+  httpServer.listen(port, host, () => {
+    console.error(`VRM MCP Server (HTTP) listening on http://${host}:${port}/mcp`);
+  });
+  setupProcessHandlers();
+}
+
+async function main() {
+  const transport = (process.env.MCP_TRANSPORT || '').toLowerCase();
+  const useHttp = transport === 'http' || process.argv.includes('--http');
+
+  if (useHttp) {
+    await runHttp();
+  } else {
+    await runStdio();
+  }
+}
+
+// Skip auto-start under Vitest so tests can import the factories without
+// binding a port or attaching a stdio transport.
+if (!process.env.VITEST) {
+  main().catch((error) => {
+    console.error('Failed to start VRM MCP Server:', error);
+    process.exit(1);
+  });
+}
