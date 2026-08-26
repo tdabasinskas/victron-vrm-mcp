@@ -556,27 +556,28 @@ describe('VRMClient', () => {
     });
   });
 
-  describe('getAlarms', () => {
-    it('should fetch alarms with minimum required fields', async () => {
+  describe('getAlarms (configured rules)', () => {
+    it('should fetch configured alarm rules with only siteId, no query params', async () => {
       const mockAlarmsData = {
-        records: [
-          { id: 1, level: 'Warning', description: 'Low battery voltage', timestamp: 1609459200 },
-          { id: 2, level: 'Critical', description: 'High temperature', timestamp: 1609462800 }
-        ]
+        alarms: [{ idDataAttribute: 630, AlarmEnabled: 1, NotifyAfterSeconds: 60 }]
       };
-      
+
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
         json: async () => mockAlarmsData
       });
-      
+
       const result = await client.getAlarms({ siteId: 12345 });
-      
+
       expect(result.ok).toBe(true);
-      expect(result.data).toEqual(mockAlarmsData.records);
+      expect(result.data).toEqual(mockAlarmsData);
+      const callUrl = mockFetch.mock.calls[0][0] as string;
+      expect(callUrl).toContain('/installations/12345/alarms');
+      // Must not smuggle history-style params onto the config endpoint.
+      expect(callUrl).not.toContain('?');
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/installations/12345/alarms'),
+        expect.any(String),
         expect.objectContaining({
           method: 'GET',
           headers: {
@@ -587,51 +588,121 @@ describe('VRMClient', () => {
       );
     });
 
-    it('should handle activeOnly parameter', async () => {
+    it('should annotate an empty rule set so it is not mistaken for "no faults"', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({ records: [] })
+        json: async () => ({ alarms: [] })
       });
-      
-      await client.getAlarms({ siteId: 12345, activeOnly: true });
-      
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('activeOnly=true'),
-        expect.any(Object)
-      );
-    });
 
-    it('should handle pagination parameters', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ records: [] })
-      });
-      
-      await client.getAlarms({ 
-        siteId: 12345, 
-        page: 2, 
-        pageSize: 50 
-      });
-      
-      const callUrl = mockFetch.mock.calls[0][0] as string;
-      expect(callUrl).toContain('page=2');
-      expect(callUrl).toContain('pageSize=50');
+      const result = await client.getAlarms({ siteId: 12345 });
+
+      expect(result.ok).toBe(true);
+      expect(result.meta.note).toContain('vrm_get_alarm_log');
     });
 
     it('should handle alarms errors', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 422,
-        json: async () => ({ message: 'Invalid page parameter' })
+        json: async () => ({ message: 'Invalid request' })
       });
-      
-      const result = await client.getAlarms({ siteId: 12345, page: -1 });
-      
+
+      const result = await client.getAlarms({ siteId: 12345 });
+
       expect(result.ok).toBe(false);
       expect(result.error?.code).toBe('bad_request');
-      expect(result.error?.message).toBe('Invalid page parameter');
+      expect(result.error?.message).toBe('Invalid request');
+    });
+  });
+
+  describe('getAlarmLog (fault history)', () => {
+    const record = (over: Record<string, unknown> = {}) => ({
+      idAlarm: 1, idSite: 12345, instance: 0, type: 2,
+      description: 'Grid lost alarm', started: 1714000123, cleared: 1714000456,
+      idDataAttribute: 630, isActive: 0, device: 'Multi', ...over
+    });
+
+    it('should hit /alarm-log and return the records array', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, records: [record()], num_records: 1 })
+      });
+
+      const result = await client.getAlarmLog({ siteId: 12345 });
+
+      expect(result.ok).toBe(true);
+      expect(Array.isArray(result.data)).toBe(true);
+      expect(result.data).toHaveLength(1);
+      expect((mockFetch.mock.calls[0][0] as string)).toContain('/installations/12345/alarm-log');
+    });
+
+    it('should pass start/end as seconds and page/count through', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true, status: 200, json: async () => ({ success: true, records: [] })
+      });
+
+      await client.getAlarmLog({ siteId: 12345, start: 1714000000, end: 1714600000, page: 2, count: 100 });
+
+      const callUrl = mockFetch.mock.calls[0][0] as string;
+      expect(callUrl).toContain('start=1714000000');
+      expect(callUrl).toContain('end=1714600000');
+      expect(callUrl).toContain('page=2');
+      expect(callUrl).toContain('count=100');
+    });
+
+    it('should coerce millisecond timestamps down to seconds', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true, status: 200, json: async () => ({ success: true, records: [] })
+      });
+
+      await client.getAlarmLog({ siteId: 12345, start: 1714000000000, end: 1714600000000 });
+
+      const callUrl = mockFetch.mock.calls[0][0] as string;
+      expect(callUrl).toContain('start=1714000000');
+      expect(callUrl).toContain('end=1714600000');
+    });
+
+    it('should drop end when start is absent', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true, status: 200, json: async () => ({ success: true, records: [] })
+      });
+
+      await client.getAlarmLog({ siteId: 12345, end: 1714600000 });
+
+      const callUrl = mockFetch.mock.calls[0][0] as string;
+      expect(callUrl).not.toContain('end=');
+    });
+
+    it('should normalise no_results_found into an empty, successful result', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: false, error_code: 'no_results_found', errors: ['No alarm log found.'] })
+      });
+
+      const result = await client.getAlarmLog({ siteId: 12345 });
+
+      expect(result.ok).toBe(true);
+      expect(result.data).toEqual([]);
+      expect(result.meta.note).toContain('No fault events');
+    });
+
+    it('should filter to active faults when activeOnly is set', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          records: [record({ isActive: 1, cleared: null }), record({ isActive: 0, cleared: 1714000456 })]
+        })
+      });
+
+      const result = await client.getAlarmLog({ siteId: 12345, activeOnly: true });
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].isActive).toBe(1);
     });
   });
 

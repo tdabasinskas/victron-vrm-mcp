@@ -31,15 +31,21 @@ export const toolSchemas = {
     end: z.number().optional()
   }).strict(),
   
+  // Configured alarm RULES (thresholds, recipients) — NOT the fault history.
+  // The underlying /alarms endpoint takes no time range; for triggered faults
+  // over time use vrm_get_alarm_log instead.
   "vrm_get_alarms": z.object({
+    siteId: z.number()
+  }).strict(),
+
+  // Historical fault/alarm LOG (/alarm-log). Timestamps are Unix seconds.
+  "vrm_get_alarm_log": z.object({
     siteId: z.number(),
-    activeOnly: z.boolean().optional(),
-    page: z.number().min(1).optional(),
-    pageSize: z.number().min(1).max(200).optional(),
     start: z.number().optional(),
     end: z.number().optional(),
-    from: z.number().optional(),
-    to: z.number().optional()
+    page: z.number().min(1).optional(),
+    count: z.number().min(1).max(3000).optional(),
+    activeOnly: z.boolean().optional()
   }).strict(),
   
   "vrm_get_diagnostics": z.object({

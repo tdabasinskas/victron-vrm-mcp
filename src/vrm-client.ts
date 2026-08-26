@@ -8,6 +8,7 @@ const ALLOWED_PATHS = [
   /^\/installations\/\d+\/stats$/,
   /^\/installations\/\d+\/overallstats$/,
   /^\/installations\/\d+\/alarms$/,
+  /^\/installations\/\d+\/alarm-log$/,
   /^\/installations\/\d+\/diagnostics$/,
   /^\/installations\/\d+\/widgets\/Graph$/,
   
@@ -270,33 +271,68 @@ export class VRMClient {
   }
   
   async getAlarms(params: ToolInputs["vrm_get_alarms"]): Promise<VRMResponse> {
+    // /alarms returns the CONFIGURED alarm rules only. It takes no time range,
+    // pagination, or activeOnly filter — those previously-accepted params were
+    // silently ignored by the API. For triggered faults use getAlarmLog().
+    const response = await this.vrmGet(`/installations/${params.siteId}/alarms`);
+
+    if (response.ok && Array.isArray(response.data?.alarms) && response.data.alarms.length === 0) {
+      response.meta.note = "No alarm RULES are configured for this installation. This does NOT mean no faults occurred — for the fault history use vrm_get_alarm_log.";
+    }
+
+    return response;
+  }
+
+  async getAlarmLog(params: ToolInputs["vrm_get_alarm_log"]): Promise<VRMResponse> {
     const queryParams = new URLSearchParams();
-    
-    if (params.activeOnly) {
-      queryParams.append("activeOnly", "true");
+
+    // The alarm-log endpoint expects Unix *seconds*. Defensively coerce
+    // millisecond timestamps (13+ digits) down to seconds, so callers that pass
+    // epoch-ms (as the old get_alarms wrongly advertised) still work.
+    const toSeconds = (t: number) => (t > 1e12 ? Math.floor(t / 1000) : t);
+
+    // Per the VRM spec, `end` only takes effect when paired with `start`.
+    if (params.start !== undefined) {
+      queryParams.append("start", toSeconds(params.start).toString());
+      if (params.end !== undefined) {
+        queryParams.append("end", toSeconds(params.end).toString());
+      }
     }
     if (params.page !== undefined) {
       queryParams.append("page", params.page.toString());
     }
-    if (params.pageSize !== undefined) {
-      queryParams.append("pageSize", params.pageSize.toString());
+    if (params.count !== undefined) {
+      queryParams.append("count", params.count.toString());
     }
-    
-    // Add time range parameters for historical alarms
-    if (params.start !== undefined) {
-      queryParams.append("start", params.start.toString());
+
+    const response = await this.vrmGet(`/installations/${params.siteId}/alarm-log`, queryParams);
+
+    // --- Response-shaping policy: the crux of the original bug ----------------
+    // When no faults fall in range, the endpoint returns HTTP 200 with a body of
+    // { success:false, error_code:'no_results_found' }. Left raw, vrmGet reports
+    // ok:true wrapping a body that says success:false — which reads like a
+    // failure. Normalise "no faults" into an unambiguous empty-but-successful
+    // result so an empty range never looks like an error or missing config.
+    if (response.ok && response.data && !Array.isArray(response.data)
+        && response.data.error_code === "no_results_found") {
+      response.data = [];
     }
-    if (params.end !== undefined) {
-      queryParams.append("end", params.end.toString());
+
+    if (response.ok && Array.isArray(response.data)) {
+      if (params.activeOnly) {
+        // An entry is still active when it has no `cleared` timestamp.
+        response.data = response.data.filter(
+          (r: any) => r.isActive === 1 || r.cleared === null || r.cleared === undefined
+        );
+      }
+      if (response.data.length === 0) {
+        response.meta.note = params.activeOnly
+          ? "No currently-active faults. (This is the fault log; configured alarm rules live in vrm_get_alarms.)"
+          : "No fault events in the given range. (This is the fault log; configured alarm rules live in vrm_get_alarms.)";
+      }
     }
-    if (params.from !== undefined) {
-      queryParams.append("from", params.from.toString());
-    }
-    if (params.to !== undefined) {
-      queryParams.append("to", params.to.toString());
-    }
-    
-    return this.vrmGet(`/installations/${params.siteId}/alarms`, queryParams);
+
+    return response;
   }
   
   async getDiagnostics(params: ToolInputs["vrm_get_diagnostics"]): Promise<VRMResponse> {

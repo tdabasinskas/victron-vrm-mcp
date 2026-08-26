@@ -162,32 +162,57 @@ describe('Tool Schemas', () => {
         siteId: 12345
       });
     });
-    
-    it('should accept pagination parameters', () => {
-      const result = toolSchemas['vrm_get_alarms'].parse({
-        siteId: 12345,
-        activeOnly: true,
-        page: 2,
-        pageSize: 50
-      });
-      expect(result).toEqual({
-        siteId: 12345,
-        activeOnly: true,
-        page: 2,
-        pageSize: 50
-      });
-    });
-    
-    it('should reject invalid pageSize', () => {
+
+    it('should reject history-style params that the config endpoint ignores', () => {
       expect(() => {
         toolSchemas['vrm_get_alarms'].parse({
           siteId: 12345,
-          pageSize: 300
+          start: 1714000000,
+          pageSize: 50
         });
       }).toThrow();
     });
   });
-  
+
+  describe('vrm.get_alarm_log', () => {
+    it('should accept minimum required fields', () => {
+      const result = toolSchemas['vrm_get_alarm_log'].parse({
+        siteId: 12345
+      });
+      expect(result).toEqual({
+        siteId: 12345
+      });
+    });
+
+    it('should accept time range, pagination and activeOnly', () => {
+      const result = toolSchemas['vrm_get_alarm_log'].parse({
+        siteId: 12345,
+        start: 1714000000,
+        end: 1714600000,
+        page: 2,
+        count: 100,
+        activeOnly: true
+      });
+      expect(result).toEqual({
+        siteId: 12345,
+        start: 1714000000,
+        end: 1714600000,
+        page: 2,
+        count: 100,
+        activeOnly: true
+      });
+    });
+
+    it('should reject count above the maximum', () => {
+      expect(() => {
+        toolSchemas['vrm_get_alarm_log'].parse({
+          siteId: 12345,
+          count: 5000
+        });
+      }).toThrow();
+    });
+  });
+
   describe('vrm.get_diagnostics', () => {
     it('should accept minimum required fields', () => {
       const result = toolSchemas['vrm_get_diagnostics'].parse({
