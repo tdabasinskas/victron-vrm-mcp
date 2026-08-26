@@ -12,6 +12,7 @@ const mockVRMClient = {
   getStats: vi.fn(),
   getOverallStats: vi.fn(),
   getAlarms: vi.fn(),
+  getAlarmLog: vi.fn(),
   getDiagnostics: vi.fn(),
   getWidgetGraph: vi.fn()
 };
@@ -92,10 +93,20 @@ describe('MCP Server', () => {
       endpoint: '/installations/12345/alarms',
       requestId: 'test-id',
       fetchedAt: '2024-01-01T00:00:00Z',
+      data: { alarms: [] },
+      meta: { status: 200, durationMs: 100, rateLimited: false }
+    });
+
+    mockVRMClient.getAlarmLog.mockResolvedValue({
+      ok: true,
+      source: 'vrm',
+      endpoint: '/installations/12345/alarm-log',
+      requestId: 'test-id',
+      fetchedAt: '2024-01-01T00:00:00Z',
       data: [],
       meta: { status: 200, durationMs: 100, rateLimited: false }
     });
-    
+
     mockVRMClient.getDiagnostics.mockResolvedValue({
       ok: true,
       source: 'vrm',
@@ -148,10 +159,11 @@ describe('MCP Server', () => {
         'vrm_get_stats',
         'vrm_get_overall_stats',
         'vrm_get_alarms',
+        'vrm_get_alarm_log',
         'vrm_get_diagnostics',
         'vrm_get_widget_graph'
       ];
-      
+
       // This tests that our expected tool names follow the correct format
       expectedToolNames.forEach(name => {
         expect(name).toMatch(/^vrm_[a-z_]+$/);
@@ -167,18 +179,19 @@ describe('MCP Server', () => {
         { name: 'vrm_get_stats', requiresSiteId: true },
         { name: 'vrm_get_overall_stats', requiresSiteId: true },
         { name: 'vrm_get_alarms', requiresSiteId: true },
+        { name: 'vrm_get_alarm_log', requiresSiteId: true },
         { name: 'vrm_get_diagnostics', requiresSiteId: true },
         { name: 'vrm_get_widget_graph', requiresSiteId: true }
       ];
-      
+
       expectedTools.forEach(tool => {
         expect(tool.name).toBeDefined();
         expect(typeof tool.name).toBe('string');
         expect(tool.name.length).toBeGreaterThan(0);
         expect(typeof tool.requiresSiteId).toBe('boolean');
       });
-      
-      expect(expectedTools).toHaveLength(8);
+
+      expect(expectedTools).toHaveLength(9);
     });
   });
   
@@ -220,11 +233,18 @@ describe('MCP Server', () => {
     
     it('should handle vrm_get_alarms tool call', async () => {
       const serverModule = await import('./index.js');
-      
+
       // Verify VRM client method would be called
       expect(mockVRMClient.getAlarms).toBeDefined();
     });
-    
+
+    it('should handle vrm_get_alarm_log tool call', async () => {
+      const serverModule = await import('./index.js');
+
+      // Verify VRM client method would be called
+      expect(mockVRMClient.getAlarmLog).toBeDefined();
+    });
+
     it('should handle vrm_get_diagnostics tool call', async () => {
       const serverModule = await import('./index.js');
       
@@ -295,10 +315,11 @@ describe('MCP Server', () => {
         'vrm_get_stats',
         'vrm_get_overall_stats',
         'vrm_get_alarms',
+        'vrm_get_alarm_log',
         'vrm_get_diagnostics',
         'vrm_get_widget_graph'
       ];
-      
+
       // Test valid tools
       validTools.forEach(toolName => {
         expect(validTools.includes(toolName)).toBe(true);

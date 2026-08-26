@@ -111,13 +111,14 @@ Add to your Claude Desktop config:
 
 ## Available Tools (41 Total)
 
-### Core Monitoring (8 tools)
+### Core Monitoring (9 tools)
 - `vrm_get_user_me` - Get current user information including user ID
 - `vrm_list_installations` - List all installations accessible to the user
 - `vrm_get_system_overview` - Get high-level system overview for a site
 - `vrm_get_stats` - Time-series statistics (venus, live_feed, consumption, kwh, solar_yield, forecast)
 - `vrm_get_overall_stats` - Aggregated totals for attribute codes over a period
-- `vrm_get_alarms` - Retrieve alarms for a site
+- `vrm_get_alarms` - Retrieve the **configured** alarm rules for a site (thresholds, recipients) — not the fault history
+- `vrm_get_alarm_log` - Retrieve the historical fault/alarm **log** for a site (what actually triggered, with start/clear times and active state)
 - `vrm_get_diagnostics` - Get most recent diagnostic datapoints
 - `vrm_get_widget_graph` - Widget graph data for specific device instances
 

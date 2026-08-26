@@ -118,19 +118,29 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "vrm_get_alarms",
-        description: "Check for any system alarms or alerts from your solar/battery installation. Supports historical time ranges to retrieve past alarms and warnings.",
+        description: "Get the CONFIGURED alarm rules for an installation (thresholds, which data attributes are monitored, and who receives notifications). This does NOT return triggered faults or history — an empty result only means no rules are set up, not that nothing went wrong. To find out what alarms/faults actually occurred, use vrm_get_alarm_log.",
+        inputSchema: {
+          type: "object",
+          required: ["siteId"],
+          properties: {
+            siteId: { type: "number", description: "Installation/site ID" }
+          },
+          additionalProperties: false
+        }
+      },
+      {
+        name: "vrm_get_alarm_log",
+        description: "Get the historical fault/alarm LOG for an installation — actual events that occurred (grid lost, high/low voltage, phase rotation, overload, inverter errors, etc.), each with a start time, a clear time, and whether it is still active. This is the tool to answer 'what alarms happened' / 'were there any faults today'. For which alarm rules are configured, use vrm_get_alarms instead.",
         inputSchema: {
           type: "object",
           required: ["siteId"],
           properties: {
             siteId: { type: "number", description: "Installation/site ID" },
-            activeOnly: { type: "boolean", description: "Show only active alarms", default: false },
-            page: { type: "number", minimum: 1, description: "Page number for pagination" },
-            pageSize: { type: "number", minimum: 1, maximum: 200, description: "Number of alarms per page" },
-            start: { type: "number", description: "Start time as epoch milliseconds for historical alarms" },
-            end: { type: "number", description: "End time as epoch milliseconds for historical alarms" },
-            from: { type: "number", description: "Alternative start time parameter" },
-            to: { type: "number", description: "Alternative end time parameter" }
+            start: { type: "number", description: "Lower bound (inclusive) as a Unix timestamp in SECONDS. Epoch-ms values are auto-converted." },
+            end: { type: "number", description: "Upper bound (inclusive) as a Unix timestamp in SECONDS. Only applied when start is also given." },
+            page: { type: "number", minimum: 1, description: "Page number for pagination (1-indexed)" },
+            count: { type: "number", minimum: 1, maximum: 3000, description: "Page size / number of records per page (default 3000)" },
+            activeOnly: { type: "boolean", description: "Return only faults that are still active (not yet cleared)", default: false }
           },
           additionalProperties: false
         }
@@ -624,6 +634,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       "vrm_get_stats",
       "vrm_get_overall_stats",
       "vrm_get_alarms",
+      "vrm_get_alarm_log",
       "vrm_get_diagnostics",
       "vrm_get_widget_graph",
       
@@ -710,7 +721,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "vrm_get_alarms":
         result = await vrmClient.getAlarms(validatedArgs as any);
         break;
-        
+
+      case "vrm_get_alarm_log":
+        result = await vrmClient.getAlarmLog(validatedArgs as any);
+        break;
+
       case "vrm_get_diagnostics":
         result = await vrmClient.getDiagnostics(validatedArgs as any);
         break;
