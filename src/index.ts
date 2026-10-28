@@ -32,6 +32,14 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 import { createServer as createHttpNodeServer, type Server as HttpServer } from "node:http";
 import { VRMClient } from "./vrm-client.js";
 
+// MCP tool annotations. Every VRM API call this server makes is an HTTP GET
+// against the external VRM API, so almost all tools are read-only. The two
+// auth tools change session state and carry their own annotations inline.
+const READ_ONLY_ANNOTATIONS = {
+  readOnlyHint: true,
+  openWorldHint: true
+};
+
 // Builds a fully-configured MCP Server with all tool handlers wired up.
 // Shared by both the stdio and HTTP transports so tool behavior is identical.
 export function createServer(vrmClient: VRMClient): Server {
@@ -52,6 +60,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_user_me",
         description: "Get your VRM account information and user profile.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           properties: {},
@@ -61,6 +70,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_list_installations",
         description: "List all your Victron energy installations/sites (solar systems, batteries, etc.).",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           properties: {
@@ -73,6 +83,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_system_overview",
         description: "Get current status of your energy system including battery level, solar production, consumption, and grid usage.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -85,6 +96,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_stats",
         description: "Get time-series data for solar production, battery usage, consumption, energy yield, and forecasts over time.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId", "type"],
@@ -103,6 +115,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_overall_stats",
         description: "Get aggregated energy totals (daily, monthly, yearly) for solar yield, consumption, battery performance, etc.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId", "attributeCodes"],
@@ -119,6 +132,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_alarms",
         description: "Get the CONFIGURED alarm rules for an installation (thresholds, which data attributes are monitored, and who receives notifications). This does NOT return triggered faults or history — an empty result only means no rules are set up, not that nothing went wrong. To find out what alarms/faults actually occurred, use vrm_get_alarm_log.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -131,6 +145,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_alarm_log",
         description: "Get the historical fault/alarm LOG for an installation — actual events that occurred (grid lost, high/low voltage, phase rotation, overload, inverter errors, etc.), each with a start time, a clear time, and whether it is still active. This is the tool to answer 'what alarms happened' / 'were there any faults today'. For which alarm rules are configured, use vrm_get_alarms instead.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -148,6 +163,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_diagnostics",
         description: "Get detailed diagnostic data and technical readings from your energy system devices.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -162,6 +178,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_widget_graph",
         description: "Get specific device performance graphs (battery voltage, inverter output, solar panel data, etc.).",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId", "attributeCodes", "instance"],
@@ -178,6 +195,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_auth_login_as_demo",
         description: "Login as a demo account to explore VRM functionality.",
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
         inputSchema: {
           type: "object",
           properties: {},
@@ -187,6 +205,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_auth_logout",
         description: "Logout from the current VRM session.",
+        annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
         inputSchema: {
           type: "object",
           properties: {},
@@ -196,6 +215,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_search_user_installations",
         description: "Search through user's installations with optional filters.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["idUser"],
@@ -212,6 +232,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_download_installation_data",
         description: "Download installation data in various formats (CSV, Excel) with optional parsing for CSV.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -229,6 +250,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_download_gps_data",
         description: "Download GPS tracking data for mobile installations.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -243,6 +265,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_installation_tags",
         description: "Get tags and labels associated with an installation.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -255,6 +278,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_custom_widget",
         description: "Get custom widget configuration for an installation.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -267,6 +291,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_dynamic_ess_settings",
         description: "Get Dynamic ESS (Energy Storage System) configuration settings.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -281,6 +306,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_data_attributes",
         description: "Get system-wide data attributes with filtering and sorting options.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           properties: {
@@ -295,6 +321,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_firmwares",
         description: "Get available firmware versions and information.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           properties: {
@@ -309,6 +336,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_reset_forecasts",
         description: "Get forecast reset timestamp for an installation.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -323,6 +351,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_vebus_state",
         description: "Get VE.Bus system state information including inverter and charger status.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -336,6 +365,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_inverter_charger_state",
         description: "Get inverter/charger state and operational status.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -349,6 +379,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_charger_relay_state",
         description: "Get charger relay state and switching status.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -362,6 +393,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_solar_charger_relay_state",
         description: "Get solar charger relay state and MPPT switching status.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -375,6 +407,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_gateway_relay_state",
         description: "Get gateway relay state for remote switching control.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -388,6 +421,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_gateway_relay_two_state",
         description: "Get secondary gateway relay state for dual relay control.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -401,6 +435,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_status_widget",
         description: "Get general system status information and operational state.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -416,6 +451,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_vebus_warnings_alarms",
         description: "Get VE.Bus system warnings and alarms for troubleshooting. Supports historical time ranges to retrieve past warnings like overload events.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -431,6 +467,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_inverter_charger_warnings_alarms",
         description: "Get inverter/charger specific warnings and alarms.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -446,6 +483,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_battery_summary",
         description: "Get comprehensive battery summary including voltage, current, SoC, and health status.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -459,6 +497,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_solar_charger_summary",
         description: "Get solar charger summary with MPPT performance and yield data.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -472,6 +511,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_ev_charger_summary",
         description: "Get EV charger summary with charging status and power delivery.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -485,6 +525,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_global_link_summary",
         description: "Get GlobalLink device summary for generator and tank monitoring.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -498,6 +539,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_motor_summary",
         description: "Get motor drive summary with RPM, power, and operational status.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -511,6 +553,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_pv_inverter_status",
         description: "Get PV inverter status with AC output and grid-tie information.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -524,6 +567,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_tank_summary",
         description: "Get tank sensor summary with fluid levels and capacity information.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -537,6 +581,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_temp_summary_graph",
         description: "Get temperature sensor summary and historical graph data.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -550,6 +595,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_dc_meter",
         description: "Get DC power meter readings with voltage, current, and power measurements.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -565,6 +611,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_bms_diagnostics",
         description: "Get Battery Management System diagnostics with cell voltages and balancing data.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -578,6 +625,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_lithium_bms",
         description: "Get Lithium battery BMS data with advanced cell monitoring and safety information.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -591,6 +639,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_historic_data",
         description: "Get historic data widget with time-series information and trends.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],
@@ -604,6 +653,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "vrm_get_io_extender",
         description: "Get IO extender input/output status for digital and analog signals.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
           type: "object",
           required: ["siteId"],

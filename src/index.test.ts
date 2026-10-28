@@ -459,6 +459,21 @@ describe('HTTP Transport', () => {
     expect(json.result.tools.length).toBeGreaterThanOrEqual(40);
   });
 
+  it('annotates every tool with an explicit readOnlyHint', async () => {
+    const res = await postMcp({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} });
+    const json: any = await res.json();
+
+    for (const tool of json.result.tools) {
+      expect(typeof tool.annotations?.readOnlyHint, tool.name).toBe('boolean');
+    }
+
+    const writeTools = json.result.tools
+      .filter((t: any) => t.annotations.readOnlyHint === false)
+      .map((t: any) => t.name)
+      .sort();
+    expect(writeTools).toEqual(['vrm_auth_login_as_demo', 'vrm_auth_logout']);
+  });
+
   it('calls a tool over HTTP and returns VRM data', async () => {
     const res = await postMcp({
       jsonrpc: '2.0',
