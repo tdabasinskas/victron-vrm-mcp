@@ -35,8 +35,12 @@ import { VRMClient } from "./vrm-client.js";
 // MCP tool annotations. Every VRM API call this server makes is an HTTP GET
 // against the external VRM API, so almost all tools are read-only. The two
 // auth tools change session state and carry their own annotations inline.
+// Reads state all four hints so clients never fall back to the spec defaults
+// (destructive, not idempotent).
 const READ_ONLY_ANNOTATIONS = {
   readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
   openWorldHint: true
 };
 

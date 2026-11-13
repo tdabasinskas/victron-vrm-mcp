@@ -465,6 +465,13 @@ describe('HTTP Transport', () => {
 
     for (const tool of json.result.tools) {
       expect(typeof tool.annotations?.readOnlyHint, tool.name).toBe('boolean');
+      expect(typeof tool.annotations?.destructiveHint, tool.name).toBe('boolean');
+      expect(typeof tool.annotations?.idempotentHint, tool.name).toBe('boolean');
+      expect(typeof tool.annotations?.openWorldHint, tool.name).toBe('boolean');
+      if (tool.annotations.readOnlyHint) {
+        expect(tool.annotations.destructiveHint, tool.name).toBe(false);
+        expect(tool.annotations.idempotentHint, tool.name).toBe(true);
+      }
     }
 
     const writeTools = json.result.tools
